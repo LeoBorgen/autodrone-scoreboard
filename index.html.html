@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoDrone 2026 — Live Scoreboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* ============================================
+           KONFIGURASJON — ENDRE GOOGLE SHEETS URL HER
+           ============================================
+           
+           Se instruksjoner i bunn av denne filen for 
+           hvordan du setter opp Google Sheets og kobler 
+           det til dette scoreboardet.
+           
+           Oppdateringsintervall (millisekunder):
+           30000 = 30 sekunder
+           15000 = 15 sekunder
+           60000 = 60 sekunder
+        */
+
+        :root {
+            --bg-deep: #0a0e1a;
+            --bg-card: #111827;
+            --bg-card-hover: #1a2236;
+            --border: #1e293b;
+            --border-accent: #2563eb;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-blue: #3b82f6;
+            --accent-cyan: #06b6d4;
+            --accent-gold: #f59e0b;
+            --accent-silver: #94a3b8;
+            --accent-bronze: #d97706;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --glow-blue: rgba(59, 130, 246, 0.15);
+            --glow-gold: rgba(245, 158, 11, 0.2);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Animated background grid */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: 
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(59, 130, 246, 0.08), transparent),
+                radial-gradient(ellipse 60% 40% at 80% 100%, rgba(6, 182, 212, 0.05), transparent);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+            position: relative;
+        }
+
+        .header__badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.25);
+            padding: 0.35rem 1rem;
+            border-radius: 100px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--accent-cyan);
+            margin-bottom: 1rem;
+        }
+
+        .header__badge .pulse-dot {
+            width: 6px;
+            height: 6px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+        }
+
+        .header__title {
+            font-size: clamp(2rem, 5vw, 3.2rem);
+            font-weight: 900;
+            letter-spacing: -0.03em;
+            line-height: 1.1;
+            background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-cyan) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header__subtitle {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            margin-top: 0.5rem;
+            font-weight: 300;
+        }
+
+        .header__update {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 0.75rem;
+        }
+
+        /* Scoreboard Table */
+        .scoreboard {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 
+                0 4px 24px rgba(0, 0, 0, 0.3),
+                0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+        }
+
+        .scoreboard__table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .scoreboard__table thead th {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            padding: 1rem 0.75rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            background: rgba(0, 0, 0, 0.2);
+            white-space: nowrap;
+        }
+
+        .scoreboard__table thead th:first-child {
+            text-align: left;
+            padding-left: 1.5rem;
+            width: 40px;
+        }
+
+        .scoreboard__table thead th:nth-child(2) {
+            text-align: left;
+            padding-left: 0;
+        }
+
+        .scoreboard__table thead th.col-total {
+            color: var(--text-primary);
+            font-weight: 700;
+        }
+
+        .scoreboard__table tbody tr {
+            border-bottom: 1px solid rgba(30, 41, 59, 0.5);
+            transition: background 0.2s ease;
+        }
+
+        .scoreboard__table tbody tr:hover {
+            background: var(--bg-card-hover);
+        }
+
+        .scoreboard__table tbody tr:last-child {
+            border-bottom: none;
+        }
+
+        .scoreboard__table tbody td {
+            padding: 0.9rem 0.75rem;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Rank column */
+        .rank-cell {
+            text-align: left !important;
+            padding-left: 1.5rem !important;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            width: 40px;
+        }
+
+        .rank-1 { color: var(--accent-gold); }
+        .rank-2 { color: var(--accent-silver); }
+        .rank-3 { color: var(--accent-bronze); }
+
+        /* Team name column */
+        .team-cell {
+            text-align: left !important;
+            padding-left: 0 !important;
+            font-weight: 700;
+            font-size: 1rem;
+            letter-spacing: -0.01em;
+        }
+
+        /* Score cells */
+        .score-cell {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            position: relative;
+        }
+
+        .score-cell.has-value {
+            color: var(--text-primary);
+        }
+
+        .score-cell.no-value {
+            color: var(--text-muted);
+        }
+
+        /* Total column */
+        .total-cell {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 800;
+            font-size: 1.1rem;
+            color: var(--text-primary) !important;
+            position: relative;
+        }
+
+        /* Gold row glow for 1st place */
+        .row-rank-1 {
+            background: linear-gradient(90deg, rgba(245, 158, 11, 0.06) 0%, transparent 60%);
+        }
+
+        .row-rank-1 .team-cell {
+            color: var(--accent-gold);
+        }
+
+        .row-rank-1 .total-cell {
+            color: var(--accent-gold) !important;
+        }
+
+        /* Competition labels - vertical on small screens */
+        .comp-label-full { display: inline; }
+        .comp-label-short { display: none; }
+
+        /* Event Descriptions */
+        .event-descriptions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.6rem;
+            margin-top: 1.5rem;
+        }
+
+        .event-desc {
+            display: flex;
+            align-items: baseline;
+            gap: 0.5rem;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .event-desc__name {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            white-space: nowrap;
+            letter-spacing: 0.02em;
+        }
+
+        .event-desc__sep {
+            color: var(--border);
+        }
+
+        .event-desc__text {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 300;
+        }
+
+        /* Status bar */
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 1.5rem;
+            padding: 0 0.25rem;
+        }
+
+        .status-bar__left,
+        .status-bar__right {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            color: var(--text-muted);
+        }
+
+        .status-bar__right a {
+            color: var(--accent-blue);
+            text-decoration: none;
+        }
+
+        /* Loading state */
+        .loading-overlay {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 4rem 2rem;
+            gap: 1rem;
+        }
+
+        .loading-spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        /* Error state */
+        .error-message {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: var(--accent-red);
+            font-size: 0.9rem;
+        }
+
+        .error-message code {
+            display: block;
+            margin-top: 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            background: rgba(0,0,0,0.3);
+            padding: 0.75rem;
+            border-radius: 8px;
+            word-break: break-all;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container { padding: 1rem 0.75rem; }
+            
+            .scoreboard__table thead th,
+            .scoreboard__table tbody td {
+                padding: 0.65rem 0.4rem;
+                font-size: 0.7rem;
+            }
+
+            .team-cell { font-size: 0.85rem; }
+            .total-cell { font-size: 0.95rem; }
+            .score-cell { font-size: 0.75rem; }
+            .rank-cell { padding-left: 0.75rem !important; }
+
+            .comp-label-full { display: none; }
+            .comp-label-short { display: inline; }
+        }
+
+        /* Animation for score updates */
+        @keyframes flash-update {
+            0% { background: rgba(59, 130, 246, 0.2); }
+            100% { background: transparent; }
+        }
+
+        .score-updated {
+            animation: flash-update 1.5s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header__badge">
+                <span class="pulse-dot"></span>
+                Live Scoreboard
+            </div>
+            <h1 class="header__title">AutoDrone 2026</h1>
+            <p class="header__subtitle">National Championship in Autonomous Sea Drones</p>
+            <p class="header__update" id="lastUpdate">Loading data...</p>
+        </header>
+
+        <div class="scoreboard" id="scoreboardContainer">
+            <div class="loading-overlay" id="loadingState">
+                <div class="loading-spinner"></div>
+                <span class="loading-text">Fetching results from Google Sheets...</span>
+            </div>
+        </div>
+
+        <div class="event-descriptions">
+            <div class="event-desc">
+                <span class="event-desc__name" style="color: #3b82f6;">Pre-Event</span>
+                <span class="event-desc__sep">—</span>
+                <span class="event-desc__text">Thrust-to-weight ratio</span>
+            </div>
+            <div class="event-desc">
+                <span class="event-desc__name" style="color: #10b981;">Obstacle</span>
+                <span class="event-desc__sep">—</span>
+                <span class="event-desc__text">Navigate gates, avoid buoys</span>
+            </div>
+            <div class="event-desc">
+                <span class="event-desc__name" style="color: #ef4444;">Collision</span>
+                <span class="event-desc__sep">—</span>
+                <span class="event-desc__text">Crossing traffic with COLREGs</span>
+            </div>
+            <div class="event-desc">
+                <span class="event-desc__name" style="color: #f59e0b;">Docking</span>
+                <span class="event-desc__sep">—</span>
+                <span class="event-desc__text">Locate pier and hold position</span>
+            </div>
+            <div class="event-desc">
+                <span class="event-desc__name" style="color: #06b6d4;">Speed Gate</span>
+                <span class="event-desc__sep">—</span>
+                <span class="event-desc__text">Round the mark, fastest time wins</span>
+            </div>
+        </div>
+
+        <div class="status-bar">
+            <span class="status-bar__left" id="statusText">Refreshes every 30 seconds</span>
+            <span class="status-bar__right">
+                <a href="https://www.autodrone.no" target="_blank">autodrone.no</a>
+            </span>
+        </div>
+    </div>
+
+    <script>
+    // =====================================================
+    //  KONFIGURASJON — ENDRE DISSE VERDIENE
+    // =====================================================
+
+    /*
+     *  STEG 1: Lim inn URL-en til ditt publiserte Google Sheet her.
+     *
+     *  Slik finner du URL-en:
+     *    1. Åpne Google Sheet
+     *    2. Fil → Del → Publiser på nettet
+     *    3. Velg riktig arkfane (f.eks. "Scoreboard")
+     *    4. Velg format: "Kommadelte verdier (.csv)"
+     *    5. Klikk "Publiser"
+     *    6. Kopier URL-en og lim inn nedenfor
+     *
+     *  URL-en vil se omtrent slik ut:
+     *  https://docs.google.com/spreadsheets/d/e/2PACX-.../pub?gid=0&single=true&output=csv
+     */
+    const GOOGLE_SHEETS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ1RbCB5IMWdlEC5VUeLHMT4t1OaxqPdNX48u-gDlQ1eG4g33MmdlYj-7_bWRKoYLzHTL-WaF3UEfB8/pub?gid=1807741341&single=true&output=csv';
+
+    /*
+     *  STEG 2: Oppdateringsintervall i millisekunder.
+     *  30000 = 30 sekunder (anbefalt)
+     *  15000 = 15 sekunder (raskere, men mer belastning)
+     */
+    const REFRESH_INTERVAL = 30000;
+
+    // =====================================================
+    //  KONKURRANSEKOLONNER — tilpass ved behov
+    //  Disse navnene MÅ matche kolonnenavnene i Google Sheets
+    // =====================================================
+
+    const COMPETITIONS = [
+        { key: 'pre',      fullName: 'Pre-Event',              shortName: 'Pre',    color: '#3b82f6' },
+        { key: 'obstacle',  fullName: 'Obstacle Channel',     shortName: 'Obst.',  color: '#10b981' },
+        { key: 'collision', fullName: 'Collision Avoidance',   shortName: 'Coll.',  color: '#ef4444' },
+        { key: 'docking',   fullName: 'Visual Docking',        shortName: 'Dock.',  color: '#f59e0b' },
+        { key: 'speed',     fullName: 'Speed Gate',            shortName: 'Speed',  color: '#06b6d4' },
+    ];
+
+    // =====================================================
+    //  RESTEN AV KODEN — ikke endre med mindre du vet hva du gjør
+    // =====================================================
+
+    let previousScores = {};
+
+    function parseCSV(csvText) {
+        const lines = csvText.trim().split('\n');
+        if (lines.length < 2) return [];
+
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+
+        // Finn kolonneindekser
+        const teamCol = headers.findIndex(h => h.includes('lag') || h.includes('team'));
+        const preCol = headers.findIndex(h => h.includes('pre') || h.includes('thrust'));
+        const obstacleCol = headers.findIndex(h => h.includes('obstacle') || h.includes('hindr'));
+        const collisionCol = headers.findIndex(h => h.includes('collision') || h.includes('kollis'));
+        const dockingCol = headers.findIndex(h => h.includes('dock'));
+        const speedCol = headers.findIndex(h => h.includes('speed') || h.includes('fart'));
+
+        const teams = [];
+
+        for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split(',').map(c => c.trim());
+            const teamName = teamCol >= 0 ? cols[teamCol] : '';
+            
+            if (!teamName) continue;
+
+            const parseScore = (colIndex) => {
+                if (colIndex < 0 || colIndex >= cols.length) return null;
+                const val = cols[colIndex];
+                if (!val || val === '' || val === '-' || val === '—') return null;
+                const num = parseFloat(val);
+                return isNaN(num) ? null : Math.round(num * 100) / 100;
+            };
+
+            const scores = {
+                pre: parseScore(preCol),
+                obstacle: parseScore(obstacleCol),
+                collision: parseScore(collisionCol),
+                docking: parseScore(dockingCol),
+                speed: parseScore(speedCol),
+            };
+
+            // Beregn total (kun verdier som finnes)
+            let total = 0;
+            let hasAny = false;
+            for (const comp of COMPETITIONS) {
+                if (scores[comp.key] !== null) {
+                    total += scores[comp.key];
+                    hasAny = true;
+                }
+            }
+
+            teams.push({
+                name: teamName,
+                scores: scores,
+                total: hasAny ? Math.round(total * 100) / 100 : null,
+            });
+        }
+
+        // Sorter etter totalpoeng (høyest først), lag uten poeng nederst
+        teams.sort((a, b) => {
+            if (a.total === null && b.total === null) return 0;
+            if (a.total === null) return 1;
+            if (b.total === null) return -1;
+            return b.total - a.total;
+        });
+
+        return teams;
+    }
+
+    function detectUpdates(teams) {
+        const updates = new Set();
+        for (const team of teams) {
+            for (const comp of COMPETITIONS) {
+                const prevKey = `${team.name}_${comp.key}`;
+                const newVal = team.scores[comp.key];
+                if (previousScores[prevKey] !== undefined && previousScores[prevKey] !== newVal) {
+                    updates.add(prevKey);
+                }
+                previousScores[prevKey] = newVal;
+            }
+        }
+        return updates;
+    }
+
+    function formatScore(val) {
+        if (val === null) return '—';
+        return Number.isInteger(val) ? val.toString() : val.toFixed(1);
+    }
+
+    function renderScoreboard(teams, updates) {
+        const container = document.getElementById('scoreboardContainer');
+
+        let html = `<table class="scoreboard__table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Team</th>`;
+
+        for (const comp of COMPETITIONS) {
+            html += `<th style="color: ${comp.color}; border-bottom: 2px solid ${comp.color};">
+                <span class="comp-label-full">${comp.fullName}</span>
+                <span class="comp-label-short">${comp.shortName}</span>
+            </th>`;
+        }
+
+        html += `<th class="col-total">Total</th>
+                </tr>
+            </thead>
+            <tbody>`;
+
+        teams.forEach((team, index) => {
+            const rank = index + 1;
+            const rankClass = rank <= 3 ? `rank-${rank}` : '';
+            const rowClass = rank === 1 && team.total !== null ? 'row-rank-1' : '';
+
+            html += `<tr class="${rowClass}">
+                <td class="rank-cell ${rankClass}">${team.total !== null ? rank : '—'}</td>
+                <td class="team-cell">${team.name}</td>`;
+
+            for (const comp of COMPETITIONS) {
+                const val = team.scores[comp.key];
+                const cellClass = val !== null ? 'has-value' : 'no-value';
+                const updateKey = `${team.name}_${comp.key}`;
+                const updatedClass = updates.has(updateKey) ? 'score-updated' : '';
+                const colorStyle = val !== null ? `color: ${comp.color};` : '';
+
+                html += `<td class="score-cell ${cellClass} ${updatedClass}" style="${colorStyle}">${formatScore(val)}</td>`;
+            }
+
+            const totalClass = team.total !== null ? 'has-value' : 'no-value';
+            html += `<td class="total-cell ${totalClass}">${team.total !== null ? formatScore(team.total) : '—'}</td>`;
+            html += `</tr>`;
+        });
+
+        html += `</tbody></table>`;
+        container.innerHTML = html;
+    }
+
+    async function fetchAndRender() {
+        try {
+            if (GOOGLE_SHEETS_CSV_URL === 'LIMEINNDINURLHER') {
+                // Demo-data når ingen URL er konfigurert
+                renderDemoData();
+                return;
+            }
+
+            const response = await fetch(GOOGLE_SHEETS_CSV_URL + '&_t=' + Date.now());
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const csvText = await response.text();
+            const teams = parseCSV(csvText);
+            const updates = detectUpdates(teams);
+            renderScoreboard(teams, updates);
+
+            const now = new Date();
+            document.getElementById('lastUpdate').textContent = 
+                `Last updated: ${now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+            document.getElementById('statusText').textContent = 
+                `Refreshes every ${REFRESH_INTERVAL / 1000} seconds`;
+
+        } catch (err) {
+            console.error('Feil ved henting av data:', err);
+            const container = document.getElementById('scoreboardContainer');
+            container.innerHTML = `
+                <div class="error-message">
+                    Could not fetch data from Google Sheets.
+                    <code>${err.message}<br><br>Check that the URL is correct and the sheet is published.</code>
+                </div>`;
+        }
+    }
+
+    function renderDemoData() {
+        // =====================================================
+        //  DEMO-DATA — vises når Google Sheets URL ikke er satt
+        //  Du kan endre lagnavn her for testing
+        // =====================================================
+        const demoTeams = [
+            { name: 'Sjøulk USN',       scores: { pre: 42.5, obstacle: 85,  collision: 70,  docking: 100, speed: 95  }},
+            { name: 'WaveRider NTNU',    scores: { pre: 38.0, obstacle: 90,  collision: null,docking: 80,  speed: 120 }},
+            { name: 'AquaBot UiA',       scores: { pre: 55.2, obstacle: 60,  collision: 40,  docking: null, speed: null}},
+            { name: 'NordDrone UiT',     scores: { pre: 30.0, obstacle: null, collision: null,docking: null, speed: null}},
+            { name: 'Havørn HVL',        scores: { pre: null, obstacle: null, collision: null,docking: null, speed: null}},
+        ];
+
+        const teams = demoTeams.map(t => {
+            let total = 0;
+            let hasAny = false;
+            for (const comp of COMPETITIONS) {
+                if (t.scores[comp.key] !== null) {
+                    total += t.scores[comp.key];
+                    hasAny = true;
+                }
+            }
+            return { ...t, total: hasAny ? Math.round(total * 100) / 100 : null };
+        });
+
+        teams.sort((a, b) => {
+            if (a.total === null && b.total === null) return 0;
+            if (a.total === null) return 1;
+            if (b.total === null) return -1;
+            return b.total - a.total;
+        });
+
+        const updates = detectUpdates(teams);
+        renderScoreboard(teams, updates);
+
+        document.getElementById('lastUpdate').textContent = 
+            'DEMO MODE — Insert Google Sheets URL in the code';
+        document.getElementById('statusText').textContent = 
+            'Connect to Google Sheets for live updates';
+    }
+
+    // Start
+    fetchAndRender();
+    setInterval(fetchAndRender, REFRESH_INTERVAL);
+
+    </script>
+
+    <!--
+    ================================================================
+    FREMGANGSMÅTE — STEG FOR STEG
+    ================================================================
+
+    STEG 1: SETT OPP GOOGLE SHEETS
+    ───────────────────────────────
+    1. Gå til sheets.google.com og opprett et nytt regneark
+    2. Gi det navnet "AutoDrone 2025 Scoreboard"
+    3. I rad 1 (overskriftsrad), skriv inn NØYAKTIG disse kolonnenavnene:
+
+       A1: Lag
+       B1: Pre-konkurranse
+       C1: Obstacle Channel
+       D1: Collision Avoidance
+       E1: Visual Docking
+       F1: Speed Gate
+
+    4. Legg inn lagnavnene i kolonne A fra rad 2 og nedover:
+
+       A2: Sjøulk USN
+       A3: WaveRider NTNU
+       A4: AquaBot UiA
+       A5: NordDrone UiT
+       A6: Havørn HVL
+       
+       (Legg til eller endre lagnavn etter behov)
+
+    5. La poengcellene stå tomme til konkurransene starter.
+       Dommerne skriver inn totalpoeng direkte i cellene.
+       F.eks. skriver en dommer "85" i celle C2 for Sjøulk USN
+       sin score i Obstacle Channel.
+
+    TIPS: Du kan også legge til en kolonne G med formelen
+    =SUM(B2:F2) for å se totalen i selve arket — scoreboardet
+    beregner uansett totalen selv.
+
+
+    STEG 2: PUBLISER GOOGLE SHEETS SOM CSV
+    ──────────────────────────────────────
+    1. I Google Sheets, gå til: Fil → Del → Publiser på nettet
+    2. Under "Lenke" velger du arkfanen (vanligvis "Ark1")
+    3. Under format, velg: Kommadelte verdier (.csv)
+    4. Klikk den grønne "Publiser"-knappen
+    5. Kopier URL-en som vises (ser omtrent slik ut):
+       https://docs.google.com/spreadsheets/d/e/2PACX-.../pub?gid=0&single=true&output=csv
+    6. Lim denne URL-en inn i GOOGLE_SHEETS_CSV_URL variabelen
+       øverst i <script>-seksjonen i denne filen.
+
+    VIKTIG: Etter du publiserer, tar det opptil 5 minutter
+    før endringer i arket reflekteres i den publiserte CSV-en.
+    Google cacher dataene midlertidig.
+
+
+    STEG 3: DOMMER-TILGANG TIL GOOGLE SHEETS
+    ─────────────────────────────────────────
+    1. I Google Sheets, klikk "Del" (øverst til høyre)
+    2. Legg til dommernes e-postadresser
+    3. Gi dem "Redigerer"-tilgang
+    4. Dommerne kan nå åpne arket på mobil/iPad via
+       Google Sheets-appen og skrive inn poeng direkte.
+
+    ALTERNATIV: Opprett et Google Form som fyller ut arket
+    automatisk — mer brukervennlig for dommere.
+
+
+    STEG 4: LEGG SCOREBOARDET PÅ GOOGLE SITES
+    ──────────────────────────────────────────
+    
+    METODE A: Embed via HTML (enklest)
+    1. Last opp denne HTML-filen til en gratis hosting-tjeneste:
+       - GitHub Pages (gratis): Opprett et repository, last opp
+         filen, aktiver Pages i Settings
+       - Netlify (gratis): Dra og slipp filen på netlify.com/drop
+       - Vercel (gratis): Import repository
+    2. Kopier URL-en til den hostede siden
+    3. I Google Sites: Sett inn → Bygg inn → Via URL
+    4. Lim inn URL-en
+    5. Juster størrelsen på embed-boksen
+
+    METODE B: Embed Google Sheets direkte (enklere, mindre pent)
+    1. I Google Sites: Sett inn → Regneark
+    2. Velg scoreboardarket
+    3. Dette viser regnearket direkte — fungerer, men ser
+       ut som et regneark.
+
+    METODE C: For storskjerm/TV på eventet
+    1. Åpne URL-en til den hostede HTML-filen i en nettleser
+    2. Trykk F11 for fullskjerm
+    3. Scoreboardet oppdaterer seg selv automatisk
+
+
+    STEG 5: TESTING
+    ──────────────
+    1. Åpne HTML-filen lokalt i nettleseren (dobbeltklikk filen)
+    2. Den vil vise demo-data så lenge ingen URL er konfigurert
+    3. Etter du har satt inn Google Sheets URL-en:
+       - Legg inn noen testpoeng i arket
+       - Vent 30 sekunder
+       - Scoreboardet skal vise poengene
+    4. Test fra mobil for å sikre at det ser bra ut
+
+    ================================================================
+    -->
+</body>
+</html>
